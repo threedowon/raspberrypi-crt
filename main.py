@@ -1,5 +1,6 @@
 import pyglet
 from pyglet.gl import *
+from pyglet.window import key
 import cv2
 import numpy as np
 
@@ -22,7 +23,7 @@ class MainWindow(pyglet.window.Window):
         self.rotation_x = 0
         self.rotation_y = 0
 
-        pyglet.clock.schedule_interval(self.update, 1/60.0)
+        pyglet.clock.schedule_interval(self.update_texture, 1/60.0)
 
     def setup_gl(self):
         """Set up OpenGL."""
@@ -44,7 +45,7 @@ class MainWindow(pyglet.window.Window):
         glRotatef(self.rotation_x, 1, 0, 0)
         glRotatef(self.rotation_y, 0, 1, 0)
 
-        self.update_texture()
+        # self.update_texture() # on_draw에서 업데이트하는 대신 schedule_interval을 사용
         if self.texture:
             glEnable(self.texture.target)
             glBindTexture(self.texture.target, self.texture.id)
@@ -56,12 +57,14 @@ class MainWindow(pyglet.window.Window):
 
     def update(self, dt):
         """Update logic."""
-        self.rotation_y += dt * 10
+        # self.rotation_y += dt * 10 # 자동 회전 제거
+        pass
 
-    def update_texture(self):
+    def update_texture(self, dt=None):
         """Capture frame from webcam and update texture."""
         ret, frame = self.camera.read()
         if ret:
+            frame = cv2.flip(frame, 1) # Flip horizontally for a mirror effect
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             image_data = pyglet.image.ImageData(
@@ -91,8 +94,8 @@ class MainWindow(pyglet.window.Window):
         glVertex3f(-s, s, -s); glVertex3f(s, s, -s); glVertex3f(s, s, s); glVertex3f(-s, s, s)
         
         # Back wall (webcam)
-        glColor3f(1.0, 1.0, 1.0)
         if self.texture:
+            glColor3f(1.0, 1.0, 1.0) # White to not tint the texture
             w = self.texture.width
             h = self.texture.height
             glTexCoord2f(0, 0); glVertex3f(-s, -s, -s)
@@ -100,6 +103,7 @@ class MainWindow(pyglet.window.Window):
             glTexCoord2f(w, h); glVertex3f(s, s, -s)
             glTexCoord2f(0, h); glVertex3f(-s, s, -s)
         else:
+            glColor3f(0.6, 0.6, 0.6) # Match other walls when no texture
             glVertex3f(-s, -s, -s); glVertex3f(s, -s, -s); glVertex3f(s, s, -s); glVertex3f(-s, s, -s)
 
         # Right wall
@@ -118,10 +122,15 @@ class MainWindow(pyglet.window.Window):
             self.rotation_y += dx * 0.5
             self.rotation_x -= dy * 0.5
 
+    def on_key_press(self, symbol, modifiers):
+        """Handle key press events."""
+        if symbol == key.ESCAPE:
+            self.on_close()
+
     def on_close(self):
         self.camera.release()
         self.close()
 
 if __name__ == '__main__':
-    window = MainWindow(width=WINDOW_WIDTH, height=WINDOW_HEIGHT, caption='3D Webcam Room', resizable=True)
+    window = MainWindow(caption='3D Webcam Room', fullscreen=True)
     pyglet.app.run()
