@@ -8,7 +8,7 @@ import threading
 # ----------------------------
 # 설정
 # ----------------------------
-WIDTH, HEIGHT = 640, 480
+WIDTH, HEIGHT = 1280, 720
 FULLSCREEN = True
 BG_COLOR = (5, 10, 15)
 
@@ -17,7 +17,7 @@ LINES = ["3DOWON's", "WORKDESK"]
 
 # UDP 설정
 UDP_IP = "0.0.0.0"
-UDP_PORT = 5005
+UDP_PORT = 5006
 
 # ----------------------------
 # UDP 수신 스레드
@@ -61,7 +61,7 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT), flags)
 clock = pygame.time.Clock()
 pygame.display.set_caption("3DOWON CRT Vintage")
 
-font = pygame.font.SysFont("Courier", 72, bold=True)
+font = pygame.font.SysFont("Courier", 120, bold=True)
 
 
 # ----------------------------
