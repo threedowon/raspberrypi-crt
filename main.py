@@ -1,136 +1,101 @@
-import pyglet
-from pyglet.gl import *
-from pyglet.window import key
+import pygame
 import cv2
+import sys
 import numpy as np
 
-# --- Constants ---
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
-ROOM_SIZE = 10
+def main():
+    """
+    Main function to run the webcam display application.
+    """
+    # --- Pygame Initialization ---
+    pygame.init()
 
-class MainWindow(pyglet.window.Window):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.set_minimum_size(320, 240)
-        self.camera = cv2.VideoCapture(0)
-        if not self.camera.isOpened():
-            raise IOError("Cannot open webcam")
+    # Get display info to set up a fullscreen window
+    try:
+        display_info = pygame.display.Info()
+        screen_width, screen_height = display_info.current_w, display_info.current_h
+    except pygame.error:
+        # Fallback for environments without a full display server
+        screen_width, screen_height = 800, 600
 
-        self.setup_gl()
+    screen = pygame.display.set_mode((screen_width, screen_height), pygame.FULLSCREEN)
+    pygame.display.set_caption("Live Webcam Feed")
+    pygame.mouse.set_visible(False) # Hide the cursor
 
-        self.texture = None
-        self.rotation_x = 0
-        self.rotation_y = 0
+    # --- OpenCV Webcam Initialization ---
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Error: Could not open webcam.", file=sys.stderr)
+        pygame.quit()
+        return
 
-        pyglet.clock.schedule_interval(self.update_texture, 1/60.0)
+    webcam_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    webcam_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    def setup_gl(self):
-        """Set up OpenGL."""
-        glEnable(GL_DEPTH_TEST)
-        # glEnable(GL_TEXTURE_2D) # This will be enabled when the texture is bound
-        glClearColor(0.1, 0.1, 0.1, 1.0)
+    # --- Scaling Logic to maintain aspect ratio ---
+    webcam_aspect_ratio = webcam_width / webcam_height
+    screen_aspect_ratio = screen_width / screen_height
 
-    def on_draw(self):
-        """Drawing event."""
-        self.clear()
+    if webcam_aspect_ratio > screen_aspect_ratio:
+        # Webcam is wider, fit to screen width (letterbox top/bottom)
+        scaled_width = screen_width
+        scaled_height = int(screen_width / webcam_aspect_ratio)
+    else:
+        # Webcam is taller, fit to screen height (pillarbox left/right)
+        scaled_height = screen_height
+        scaled_width = int(screen_height * webcam_aspect_ratio)
+
+    # Calculate position to center the feed
+    pos_x = (screen_width - scaled_width) // 2
+    pos_y = (screen_height - scaled_height) // 2
+
+    # --- Main Loop ---
+    running = True
+    while running:
+        # --- Event Handling ---
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+
+        # --- Frame Capture and Processing ---
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Failed to capture frame.", file=sys.stderr)
+            running = False
+            continue
+
+        # 1. Flip horizontally for a mirror effect
+        frame = cv2.flip(frame, 1)
+
+        # 2. Convert from BGR (OpenCV) to RGB (Pygame)
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # 3. Create Pygame surface from the numpy array.
+        #    Using frombuffer is more efficient.
+        webcam_surface = pygame.image.frombuffer(
+            frame_rgb.tobytes(), (webcam_width, webcam_height), "RGB"
+        )
+
+        # --- Drawing to the Screen ---
+        # 1. Scale the webcam surface to fit the screen
+        scaled_surface = pygame.transform.scale(webcam_surface, (scaled_width, scaled_height))
         
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        gluPerspective(65, self.width / self.height, 0.1, 100)
-
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-        glTranslatef(0, -2, -ROOM_SIZE * 1.5)
-        glRotatef(self.rotation_x, 1, 0, 0)
-        glRotatef(self.rotation_y, 0, 1, 0)
-
-        # self.update_texture() # on_draw에서 업데이트하는 대신 schedule_interval을 사용
-        if self.texture:
-            glEnable(self.texture.target)
-            glBindTexture(self.texture.target, self.texture.id)
-
-        self.draw_room()
-
-        if self.texture:
-            glDisable(self.texture.target)
-
-    def update(self, dt):
-        """Update logic."""
-        # self.rotation_y += dt * 10 # 자동 회전 제거
-        pass
-
-    def update_texture(self, dt=None):
-        """Capture frame from webcam and update texture."""
-        ret, frame = self.camera.read()
-        if ret:
-            frame = cv2.flip(frame, 1) # Flip horizontally for a mirror effect
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            image_data = pyglet.image.ImageData(
-                frame_rgb.shape[1], frame_rgb.shape[0], 
-                'RGB', frame_rgb.tobytes(), pitch=-frame_rgb.shape[1] * 3
-            )
-            
-            if self.texture is None:
-                self.texture = image_data.get_texture(rectangle=True)
-                glTexParameteri(self.texture.target, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-                glTexParameteri(self.texture.target, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-            else:
-                self.texture.blit_into(image_data, 0, 0, 0)
-
-    def draw_room(self):
-        """Draw the 3D room."""
-        s = ROOM_SIZE / 2.0
+        # 2. Fill the background with black
+        screen.fill((0, 0, 0))
         
-        glBegin(GL_QUADS)
+        # 3. Blit the scaled surface onto the screen at the centered position
+        screen.blit(scaled_surface, (pos_x, pos_y))
 
-        # Floor
-        glColor3f(0.5, 0.5, 0.5)
-        glVertex3f(-s, -s, -s); glVertex3f(s, -s, -s); glVertex3f(s, -s, s); glVertex3f(-s, -s, s)
+        # 4. Update the display
+        pygame.display.flip()
 
-        # Ceiling
-        glColor3f(0.8, 0.8, 0.8)
-        glVertex3f(-s, s, -s); glVertex3f(s, s, -s); glVertex3f(s, s, s); glVertex3f(-s, s, s)
-        
-        # Back wall (webcam)
-        if self.texture:
-            glColor3f(1.0, 1.0, 1.0) # White to not tint the texture
-            w = self.texture.width
-            h = self.texture.height
-            glTexCoord2f(0, 0); glVertex3f(-s, -s, -s)
-            glTexCoord2f(w, 0); glVertex3f(s, -s, -s)
-            glTexCoord2f(w, h); glVertex3f(s, s, -s)
-            glTexCoord2f(0, h); glVertex3f(-s, s, -s)
-        else:
-            glColor3f(0.6, 0.6, 0.6) # Match other walls when no texture
-            glVertex3f(-s, -s, -s); glVertex3f(s, -s, -s); glVertex3f(s, s, -s); glVertex3f(-s, s, -s)
-
-        # Right wall
-        glColor3f(0.6, 0.6, 0.6)
-        glVertex3f(s, -s, -s); glVertex3f(s, -s, s); glVertex3f(s, s, s); glVertex3f(s, s, -s)
-        
-        # Left wall
-        glColor3f(0.6, 0.6, 0.6)
-        glVertex3f(-s, -s, -s); glVertex3f(-s, -s, s); glVertex3f(-s, s, s); glVertex3f(-s, s, -s)
-
-        glEnd()
-
-    def on_mouse_drag(self, x, y, dx, dy, buttons, modifiers):
-        """Handle mouse drag to rotate the room."""
-        if buttons & pyglet.window.mouse.LEFT:
-            self.rotation_y += dx * 0.5
-            self.rotation_x -= dy * 0.5
-
-    def on_key_press(self, symbol, modifiers):
-        """Handle key press events."""
-        if symbol == key.ESCAPE:
-            self.on_close()
-
-    def on_close(self):
-        self.camera.release()
-        self.close()
+    # --- Cleanup ---
+    cap.release()
+    pygame.quit()
+    print("Application closed.")
 
 if __name__ == '__main__':
-    window = MainWindow(caption='3D Webcam Room', fullscreen=True)
-    pyglet.app.run()
+    main()
