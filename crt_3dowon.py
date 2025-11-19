@@ -10,8 +10,10 @@ import threading
 # ----------------------------
 WIDTH, HEIGHT = 640, 480
 FULLSCREEN = True
-TEXT = "3DOWON"
 BG_COLOR = (5, 10, 15)
+
+# 텍스트 두 줄
+LINES = ["3DOWON's", "WORKDESK"]
 
 # UDP 설정
 UDP_IP = "0.0.0.0"
@@ -63,14 +65,13 @@ font = pygame.font.SysFont("Courier", 72, bold=True)
 
 
 # ----------------------------
-# 텍스트 생성 함수 (3D 효과)
+# 텍스트 생성 (3D 그림자)
 # ----------------------------
 def create_extruded_text(text, base_color, depth=7):
     base = font.render(text, True, base_color)
     w, h = base.get_size()
     surf = pygame.Surface((w + depth, h + depth), pygame.SRCALPHA)
 
-    # 그림자
     shadow_color = (
         int(base_color[0] * 0.2),
         int(base_color[1] * 0.2),
@@ -82,6 +83,28 @@ def create_extruded_text(text, base_color, depth=7):
         surf.blit(shadow, (i + 1, i + 1))
 
     surf.blit(base, (0, 0))
+    return surf
+
+
+# ----------------------------
+# 여러 줄 텍스트를 하나의 Surface로 묶기
+# ----------------------------
+def build_multiline_text(lines, color):
+    rendered = [create_extruded_text(line, color) for line in lines]
+
+    max_w = max(s.get_width() for s in rendered)
+    total_h = (
+        sum(s.get_height() for s in rendered) + (len(rendered) - 1) * 10
+    )  # 줄 간격
+
+    surf = pygame.Surface((max_w, total_h), pygame.SRCALPHA)
+
+    y_offset = 0
+    for s in rendered:
+        x = (max_w - s.get_width()) // 2
+        surf.blit(s, (x, y_offset))
+        y_offset += s.get_height() + 10
+
     return surf
 
 
@@ -123,7 +146,7 @@ def main():
     global x, y, vx, vy, latest_color
 
     # 최초 텍스트 생성
-    text_surf = create_extruded_text(TEXT, latest_color)
+    text_surf = build_multiline_text(LINES, latest_color)
     TEXT_W, TEXT_H = text_surf.get_size()
 
     last_color = latest_color
@@ -142,9 +165,9 @@ def main():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
 
-        # 🔥 색이 바뀌면 텍스트 다시 생성
+        # 색이 바뀌면 텍스트 다시 생성
         if latest_color != last_color:
-            text_surf = create_extruded_text(TEXT, latest_color)
+            text_surf = build_multiline_text(LINES, latest_color)
             TEXT_W, TEXT_H = text_surf.get_size()
             last_color = latest_color
 
@@ -176,8 +199,8 @@ def main():
         screen.fill(bg)
 
         # 텍스트 위치 + 흔들림
-        cx, cy = int(x) + jitter(), int(y) + jitter()
-        rect_t = text_surf.get_rect(center=(cx, cy))
+        cx_pos, cy_pos = int(x) + jitter(), int(y) + jitter()
+        rect_t = text_surf.get_rect(center=(cx_pos, cy_pos))
         screen.blit(text_surf, rect_t)
 
         # CRT 효과
